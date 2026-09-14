@@ -26,12 +26,13 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
   camera.position.set(0, 1.2, 9);
 
   const renderer = new THREE.WebGLRenderer({
-    antialias: true,
+    antialias: false, // Disabling MSAA on full viewport canvas gives immense FPS boost
     alpha: true,
     powerPreference: 'high-performance',
+    precision: 'mediump',
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -71,7 +72,7 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
   masterGroup.add(ceilGrid);
 
   // ==================== 2. DEEP DATA CONSTELLATION (STARS / CRYPTO NODES) ====================
-  const starCount = 1800;
+  const starCount = 750; // Optimized from 1800 for maximum frame rate
   const starGeo = new THREE.BufferGeometry();
   const starPos = new Float32Array(starCount * 3);
   const starColors = new Float32Array(starCount * 3);
@@ -114,7 +115,7 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
 
   // ==================== 3. FLOATING CRYPTO NETWORK RING & PARTICLES (PERIPHERY) ====================
   // Clean decorative holographic torus ring floating deep in the background
-  const ringGeo = new THREE.TorusGeometry(5.5, 0.02, 16, 120);
+  const ringGeo = new THREE.TorusGeometry(5.5, 0.02, 16, 80);
   const ringMat = new THREE.MeshBasicMaterial({
     color: 0x00f2fe,
     transparent: true,
@@ -125,7 +126,7 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
   backgroundHoloRing.rotation.x = Math.PI * 0.35;
   masterGroup.add(backgroundHoloRing);
 
-  const ringGeo2 = new THREE.TorusGeometry(7.2, 0.015, 16, 140);
+  const ringGeo2 = new THREE.TorusGeometry(7.2, 0.015, 16, 80);
   const ringMat2 = new THREE.MeshBasicMaterial({
     color: 0x38bdf8,
     transparent: true,
@@ -138,7 +139,7 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
 
   // ==================== 4. THREAT DEFLECTION SANDBOX (SAFE ZONE Z < -1) ====================
   // Visualizes packet flow safely without ever touching foreground typography
-  const packetCount = 200;
+  const packetCount = 60; // Optimized from 200
   const packetGeo = new THREE.BufferGeometry();
   const packetPos = new Float32Array(packetCount * 3);
   const packetCol = new Float32Array(packetCount * 3);
@@ -153,7 +154,7 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
     packetCol[i * 3] = 0.0;
     packetCol[i * 3 + 1] = 0.95;
     packetCol[i * 3 + 2] = 1.0;
-    packetSpeeds.push(0.015 + Math.random() * 0.025);
+    packetSpeeds.push(0.018 + Math.random() * 0.025);
   }
 
   packetGeo.setAttribute('position', new THREE.BufferAttribute(packetPos, 3));
@@ -180,7 +181,7 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   };
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -188,25 +189,33 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
     mouse.targetY = -(e.clientY / window.innerHeight - 0.5) * 2;
   };
 
-  window.addEventListener('resize', handleResize);
-  window.addEventListener('mousemove', handleMouseMove);
+  let isPageVisible = !document.hidden;
+  const handleVisibilityChange = () => {
+    isPageVisible = !document.hidden;
+  };
+
+  window.addEventListener('resize', handleResize, { passive: true });
+  window.addEventListener('mousemove', handleMouseMove, { passive: true });
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   // ==================== ANIMATION RENDER LOOP ====================
   const clock = new THREE.Clock();
 
   const animate = () => {
     animationFrameId = requestAnimationFrame(animate);
+
+    if (!isPageVisible) return; // Pause rendering when tab is hidden
+
     const elapsedTime = clock.getElapsedTime();
 
-    // Mouse Lerp
-    mouse.x += (mouse.targetX - mouse.x) * 0.04;
-    mouse.y += (mouse.targetY - mouse.y) * 0.04;
+    // Mouse Lerp - snappy response
+    mouse.x += (mouse.targetX - mouse.x) * 0.08;
+    mouse.y += (mouse.targetY - mouse.y) * 0.08;
 
-    // Scroll Progress Lerp
-    currentProgress += (targetProgress - currentProgress) * 0.05;
+    // Scroll Progress Lerp - snappy response
+    currentProgress += (targetProgress - currentProgress) * 0.1;
 
     // Camera movement based on vertical scroll
-    // Seamless vertical journey through cyberspace
     camera.position.y = 1.2 - currentProgress * 4.0 + mouse.y * 0.4;
     camera.position.x = mouse.x * 0.5;
     camera.rotation.x = -mouse.y * 0.05 - currentProgress * 0.15;
@@ -220,33 +229,21 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
     starField.rotation.y = elapsedTime * 0.015;
     starField.rotation.x = Math.sin(elapsedTime * 0.01) * 0.05;
 
-    // Rings slow majestic rotation
+    // Rings slow rotation
     backgroundHoloRing.rotation.z = elapsedTime * 0.05;
     backgroundHoloRing2.rotation.z = -elapsedTime * 0.03;
 
-    // Animate peripheral data packets safely on the right
+    // Animate peripheral data packets
     const pArr = packetGeo.attributes.position.array as Float32Array;
-    const cArr = packetGeo.attributes.color.array as Float32Array;
 
     for (let i = 0; i < packetCount; i++) {
       pArr[i * 3 + 1] += packetSpeeds[i];
       if (pArr[i * 3 + 1] > 3.5) {
         pArr[i * 3 + 1] = -3.5;
         pArr[i * 3] = 1.5 + Math.random() * 6.5;
-
-        if (isShieldFortified) {
-          cArr[i * 3] = 0.0;
-          cArr[i * 3 + 1] = 0.95;
-          cArr[i * 3 + 2] = 1.0;
-        } else {
-          cArr[i * 3] = 0.95;
-          cArr[i * 3 + 1] = 0.2;
-          cArr[i * 3 + 2] = 0.25;
-        }
       }
     }
     packetGeo.attributes.position.needsUpdate = true;
-    packetGeo.attributes.color.needsUpdate = true;
 
     renderer.render(scene, camera);
   };
@@ -262,11 +259,27 @@ export function initThreeEngine(container: HTMLElement): ThreeEngineInstance {
       threatRimLight.color.setHex(isProtected ? 0x00f2fe : 0xef4444);
       gridMaterial.color.setHex(isProtected ? 0x00f2fe : 0xef4444);
       ringMat.color.setHex(isProtected ? 0x00f2fe : 0xef4444);
+
+      // Only update buffer color when mode changes
+      const cArr = packetGeo.attributes.color.array as Float32Array;
+      for (let i = 0; i < packetCount; i++) {
+        if (isProtected) {
+          cArr[i * 3] = 0.0;
+          cArr[i * 3 + 1] = 0.95;
+          cArr[i * 3 + 2] = 1.0;
+        } else {
+          cArr[i * 3] = 0.95;
+          cArr[i * 3 + 1] = 0.2;
+          cArr[i * 3 + 2] = 0.25;
+        }
+      }
+      packetGeo.attributes.color.needsUpdate = true;
     },
     destroy: () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }

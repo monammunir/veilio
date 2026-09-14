@@ -38,32 +38,40 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Vertical Scroll Event Listener
+  // Vertical Scroll Event Listener (RAF Throttled for 60-120fps smoothness)
   useEffect(() => {
+    let ticking = false;
+
     const handleScroll = () => {
-      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = totalHeight > 0 ? window.scrollY / totalHeight : 0;
-      setScrollProgress(progress);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+          const progress = totalHeight > 0 ? window.scrollY / totalHeight : 0;
+          setScrollProgress(progress);
 
-      if (engineRef.current) {
-        engineRef.current.updateProgress(progress);
-      }
+          if (engineRef.current) {
+            engineRef.current.updateProgress(progress);
+          }
 
-      // Determine active section based on scroll offset
-      const sectionIds = ['hero', 'gdpr', 'threats', 'lifecycle', 'ecosystem', 'briefing'];
-      const scrollPos = window.scrollY + window.innerHeight * 0.35;
+          // Determine active section based on scroll offset
+          const sectionIds = ['hero', 'gdpr', 'threats', 'lifecycle', 'ecosystem', 'briefing'];
+          const scrollPos = window.scrollY + window.innerHeight * 0.35;
 
-      for (let i = sectionIds.length - 1; i >= 0; i--) {
-        const el = document.getElementById(sectionIds[i]);
-        if (el && scrollPos >= el.offsetTop) {
-          setCurrentScene((prev) => {
-            if (prev !== i) {
-              soundEngine.playSceneTransition();
+          for (let i = sectionIds.length - 1; i >= 0; i--) {
+            const el = document.getElementById(sectionIds[i]);
+            if (el && scrollPos >= el.offsetTop) {
+              setCurrentScene((prev) => {
+                if (prev !== i) {
+                  soundEngine.playSceneTransition();
+                }
+                return i;
+              });
+              break;
             }
-            return i;
-          });
-          break;
-        }
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 

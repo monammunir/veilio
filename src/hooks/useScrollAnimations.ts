@@ -29,76 +29,89 @@ export function useScrollAnimations() {
     );
     revealElements.forEach((el) => revealObserver.observe(el));
 
-    // ==================== 2. SPOTLIGHT & 3D TILT DYNAMICS ====================
+    // ==================== 2. SPOTLIGHT & 3D TILT DYNAMICS (Optimized: No Layout Thrashing) ====================
     const glassCards = document.querySelectorAll<HTMLElement>('.glass-card');
     const tiltCards = document.querySelectorAll<HTMLElement>('.tilt-card');
 
     const cleanupFns: Array<() => void> = [];
 
-    // Track cursor coordinates on all glass cards for the spotlight glow
+    // Track cursor coordinates on all glass cards for the spotlight glow without forced reflow
     glassCards.forEach((card) => {
       const moveHandler = (e: MouseEvent) => {
-        const rect = card.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        card.style.setProperty('--mouse-x', `${x}px`);
-        card.style.setProperty('--mouse-y', `${y}px`);
+        card.style.setProperty('--mouse-x', `${e.offsetX}px`);
+        card.style.setProperty('--mouse-y', `${e.offsetY}px`);
       };
 
-      card.addEventListener('mousemove', moveHandler);
+      card.addEventListener('mousemove', moveHandler, { passive: true });
       cleanupFns.push(() => card.removeEventListener('mousemove', moveHandler));
     });
 
-    // Apply 3D perspective tilt only to dedicated tilt cards
+    // Apply 3D perspective tilt only to dedicated tilt cards (cache rect on enter)
     tiltCards.forEach((card) => {
+      let rect: DOMRect | null = null;
+
+      const handleMouseEnter = () => {
+        rect = card.getBoundingClientRect();
+      };
+
       const handleMouseMove = (e: MouseEvent) => {
-        const rect = card.getBoundingClientRect();
+        if (!rect) rect = card.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
-        const rotX = -((y - centerY) / centerY) * 6;
-        const rotY = ((x - centerX) / centerX) * 6;
+        const rotX = -((y - centerY) / centerY) * 4;
+        const rotY = ((x - centerX) / centerX) * 4;
 
-        card.style.transform = `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) translateY(-4px)`;
+        card.style.transform = `perspective(800px) rotateX(${rotX.toFixed(1)}deg) rotateY(${rotY.toFixed(1)}deg) translateY(-2px)`;
       };
 
       const handleMouseLeave = () => {
+        rect = null;
         card.style.transform = '';
       };
 
-      card.addEventListener('mousemove', handleMouseMove);
-      card.addEventListener('mouseleave', handleMouseLeave);
+      card.addEventListener('mouseenter', handleMouseEnter, { passive: true });
+      card.addEventListener('mousemove', handleMouseMove, { passive: true });
+      card.addEventListener('mouseleave', handleMouseLeave, { passive: true });
 
       cleanupFns.push(() => {
+        card.removeEventListener('mouseenter', handleMouseEnter);
         card.removeEventListener('mousemove', handleMouseMove);
         card.removeEventListener('mouseleave', handleMouseLeave);
       });
     });
 
-    // ==================== 3. AMBIENT GLOW DYNAMIC COLOR SHIFT ====================
+    // ==================== 3. AMBIENT GLOW DYNAMIC COLOR SHIFT (RAF Throttled) ====================
     const glow1 = document.querySelector<HTMLElement>('.bg-glow-1');
     const glow2 = document.querySelector<HTMLElement>('.bg-glow-2');
 
     const sceneGlows = [
-      { g1: 'rgba(0, 242, 254, 0.22)', g2: 'rgba(56, 189, 248, 0.12)' },   // Hero: Cyan & Blue
-      { g1: 'rgba(16, 185, 129, 0.22)', g2: 'rgba(0, 242, 254, 0.14)' },   // GDPR: Emerald & Cyan
-      { g1: 'rgba(239, 68, 68, 0.20)', g2: 'rgba(0, 242, 254, 0.15)' },    // Threats: Red & Cyan
-      { g1: 'rgba(56, 189, 248, 0.22)', g2: 'rgba(168, 85, 247, 0.16)' },  // Lifecycle: Blue & Purple
-      { g1: 'rgba(168, 85, 247, 0.20)', g2: 'rgba(0, 242, 254, 0.16)' },  // Ecosystem: Purple & Cyan
-      { g1: 'rgba(245, 158, 11, 0.20)', g2: 'rgba(0, 242, 254, 0.14)' },   // Briefing: Gold & Cyan
+      { g1: 'rgba(0, 242, 254, 0.20)', g2: 'rgba(56, 189, 248, 0.08)' },   // Hero: Cyan & Blue
+      { g1: 'rgba(16, 185, 129, 0.20)', g2: 'rgba(0, 242, 254, 0.10)' },   // GDPR: Emerald & Cyan
+      { g1: 'rgba(239, 68, 68, 0.18)', g2: 'rgba(0, 242, 254, 0.10)' },    // Threats: Red & Cyan
+      { g1: 'rgba(56, 189, 248, 0.18)', g2: 'rgba(168, 85, 247, 0.12)' },  // Lifecycle: Blue & Purple
+      { g1: 'rgba(168, 85, 247, 0.18)', g2: 'rgba(0, 242, 254, 0.12)' },  // Ecosystem: Purple & Cyan
+      { g1: 'rgba(245, 158, 11, 0.18)', g2: 'rgba(0, 242, 254, 0.10)' },   // Briefing: Gold & Cyan
     ];
 
+    let ticking = false;
     const handleScroll = () => {
-      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = scrollHeight > 0 ? window.scrollY / scrollHeight : 0;
-      const idx = Math.min(Math.floor(progress * sceneGlows.length), sceneGlows.length - 1);
-      const colors = sceneGlows[idx];
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+          const progress = scrollHeight > 0 ? window.scrollY / scrollHeight : 0;
+          const idx = Math.min(Math.floor(progress * sceneGlows.length), sceneGlows.length - 1);
+          const colors = sceneGlows[idx];
 
-      if (glow1 && glow2 && colors) {
-        glow1.style.background = `radial-gradient(circle, ${colors.g1} 0%, transparent 70%)`;
-        glow2.style.background = `radial-gradient(circle, ${colors.g2} 0%, transparent 70%)`;
+          if (glow1 && glow2 && colors) {
+            glow1.style.background = `radial-gradient(circle, ${colors.g1} 0%, transparent 68%)`;
+            glow2.style.background = `radial-gradient(circle, ${colors.g2} 0%, transparent 68%)`;
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 
